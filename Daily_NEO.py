@@ -68,7 +68,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Google Drive File IDs & Sheet IDs
 SHEET_CAPDON_ID = '1qc_QhrvpoLLp6w9RkGBEkm8qBO49GJE8oMlwkCdJOsk'
 DSNS_FILE_ID    = '1_Mr_wnoJ2zBQJ0Pb9xFPwAH8IsIQiyuk'  # DSNS CTV sale Affina FINAL V2.xlsx
-QUYDOI_FILE_ID  = '1SDVXT33gHfIKR17x2xdWiO5xgabVXOWH'  # 26_02_04_sửa ngày_quy_doi_all.xlsx
+QUYDOI_FILE_ID  = os.environ.get('QUYDOI_FILE_ID', '1xigtwunsk7w6weaK_sUuBNarEEs27Wft')  # File Quy đổi chính thức trong folder DATA trên Google Drive
 DRIVE_FOLDER_ID = os.environ.get('DRIVE_FOLDER_ID', '1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u')  # Target Drive Folder: Report_daily_NEO
 ONEDRIVE_DSNS_URL = os.environ.get('ONEDRIVE_DSNS_URL', 'https://1drv.ms/x/c/506a9d11fc30ada1/IQCsopTcUW2nSZJ_dhCCC9nwAb-1Wkmo0xYa5HzEyaIQIVU?e=TFjv1Y')  # Direct OneDrive Share Link
 
@@ -186,18 +186,33 @@ def download_onedrive_file(onedrive_url, local_path):
 
 
 def download_drive_file(drive_service, file_id, local_path):
-    """Tải file từ Google Drive về máy cục bộ / runner."""
+    """Tải file từ Google Drive về máy cục bộ / runner (hỗ trợ cả binary .xlsx và Google Sheets)."""
+    try:
+        file_meta = drive_service.files().get(fileId=file_id, fields='id, name, mimeType').execute()
+        mime_type = file_meta.get('mimeType', '')
+        file_name = file_meta.get('name', file_id)
 
-    req = drive_service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, req)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.seek(0)
-    with open(local_path, 'wb') as f:
-        f.write(fh.read())
-    print(f"  ✅ Đã tải file ID [{file_id}] -> {os.path.basename(local_path)}")
+        if mime_type == 'application/vnd.google-apps.spreadsheet':
+            req = drive_service.files().export_media(
+                fileId=file_id,
+                mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
+            req = drive_service.files().get_media(fileId=file_id)
+
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, req)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        fh.seek(0)
+        with open(local_path, 'wb') as f:
+            f.write(fh.read())
+        print(f"  ✅ Đã tải file [{file_name}] ID [{file_id}] -> {os.path.basename(local_path)}")
+        return True
+    except Exception as e:
+        print(f"  ⚠️ Lỗi khi tải file ID [{file_id}] từ Google Drive: {e}")
+        return False
 
 
 def export_google_sheet_data(sheets_service, spreadsheet_id, target_sheets, local_excel_path):
@@ -1207,8 +1222,8 @@ def main():
 
     # 2.3 Nạp Quy đổi
     # Ưu tiên 1: Đọc từ file Quy đổi chính thức trên máy local nếu có
-    # Ưu tiên 2: Đọc file quy_doi_all.xlsx đi kèm trong repository (cho GitHub Actions trên cloud)
-    # Ưu tiên 3: Tải từ Google Drive qua drive_service
+    # Ưu tiên 2: Tải từ Google Drive qua Google Drive API (Folder Data trên Drive, ID: 1xigtwunsk7w6weaK_sUuBNarEEs27Wft)
+    # Ưu tiên 3: Đọc file quy_doi_all.xlsx dự phòng đi kèm trong kho repo
     local_official_qd = r"C:\Users\ADMIN\Desktop\AFFINA\DA\DATA_3_input\Copy of 26_02_04_sửa ngày_quy_doi_all.xlsx"
     repo_quydoi = os.path.join(os.path.dirname(__file__), 'quy_doi_all.xlsx')
     quydoi_loaded = False
@@ -1218,13 +1233,14 @@ def main():
         shutil.copyfile(local_official_qd, local_quydoi_path)
         print(f"  ℹ Đã nạp file Quy đổi CHÍNH THỨC từ máy: {local_official_qd}")
         quydoi_loaded = True
-    elif os.path.exists(repo_quydoi):
+    elif drive_service:
+        print(f"  ⏳ Đang tải file Quy đổi từ Google Drive API (ID: {QUYDOI_FILE_ID})...")
+        quydoi_loaded = download_drive_file(drive_service, QUYDOI_FILE_ID, local_quydoi_path)
+
+    if not quydoi_loaded and os.path.exists(repo_quydoi):
         import shutil
         shutil.copyfile(repo_quydoi, local_quydoi_path)
-        print(f"  ℹ Đã nạp file Quy đổi chính thức đi kèm kho dự án: {repo_quydoi}")
-        quydoi_loaded = True
-    elif drive_service:
-        download_drive_file(drive_service, QUYDOI_FILE_ID, local_quydoi_path)
+        print(f"  ℹ Đã nạp file Quy đổi dự phòng đi kèm kho dự án: {repo_quydoi}")
         quydoi_loaded = True
 
     if not quydoi_loaded and not os.path.exists(local_quydoi_path):
