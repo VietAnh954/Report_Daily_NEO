@@ -53,8 +53,11 @@ if hasattr(sys.stdout, 'reconfigure'):
 # ============================================================================
 # CẤU HÌNH THỜI GIAN BÁO CÁO (Mặc định: Tháng & Năm hiện tại)
 # ============================================================================
-REPORT_MONTH = int(os.environ.get('REPORT_MONTH', datetime.now().month))
-REPORT_YEAR  = int(os.environ.get('REPORT_YEAR', datetime.now().year))
+_month_env = str(os.environ.get('REPORT_MONTH', '')).strip()
+_year_env  = str(os.environ.get('REPORT_YEAR', '')).strip()
+REPORT_MONTH = int(_month_env) if _month_env else datetime.now().month
+REPORT_YEAR  = int(_year_env) if _year_env else datetime.now().year
+
 
 # Thư mục làm việc tạm thời
 WORK_DIR = os.environ.get('AFFINA_WORK_DIR', os.path.join(os.getcwd(), 'temp_affina_neo'))
