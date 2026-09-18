@@ -1,11 +1,14 @@
-﻿name: Daily Report NEO
+name: Daily Report NEO
 
 on:
   schedule:
     # Chạy 8:00 AM VN (1:00 UTC) và 17:30 PM VN (10:30 UTC) mỗi ngày
     - cron: '0 1 * * *'
     - cron: '30 10 * * *'
+  push:
+    branches: [ main ]
   workflow_dispatch:
+
     inputs:
       report_month:
         description: 'Tháng báo cáo (1-12, để trống = tháng hiện tại)'
