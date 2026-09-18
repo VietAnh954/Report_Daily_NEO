@@ -1205,17 +1205,30 @@ def main():
 
 
 
-    # 2.3 Tải Quy đổi
-    if drive_service:
+    # 2.3 Nạp Quy đổi
+    # Ưu tiên 1: Đọc từ file Quy đổi chính thức trên máy local nếu có
+    # Ưu tiên 2: Đọc file quy_doi_all.xlsx đi kèm trong repository (cho GitHub Actions trên cloud)
+    # Ưu tiên 3: Tải từ Google Drive qua drive_service
+    local_official_qd = r"C:\Users\ADMIN\Desktop\AFFINA\DA\DATA_3_input\Copy of 26_02_04_sửa ngày_quy_doi_all.xlsx"
+    repo_quydoi = os.path.join(os.path.dirname(__file__), 'quy_doi_all.xlsx')
+    quydoi_loaded = False
+
+    if os.path.exists(local_official_qd):
+        import shutil
+        shutil.copyfile(local_official_qd, local_quydoi_path)
+        print(f"  ℹ Đã nạp file Quy đổi CHÍNH THỨC từ máy: {local_official_qd}")
+        quydoi_loaded = True
+    elif os.path.exists(repo_quydoi):
+        import shutil
+        shutil.copyfile(repo_quydoi, local_quydoi_path)
+        print(f"  ℹ Đã nạp file Quy đổi chính thức đi kèm kho dự án: {repo_quydoi}")
+        quydoi_loaded = True
+    elif drive_service:
         download_drive_file(drive_service, QUYDOI_FILE_ID, local_quydoi_path)
-    elif not os.path.exists(local_quydoi_path):
-        fallback_qd = r"C:\Users\ADMIN\Desktop\AFFINA\DA\DATA_3_input\Copy of 26_02_04_sửa ngày_quy_doi_all.xlsx"
-        if os.path.exists(fallback_qd):
-            import shutil
-            shutil.copyfile(fallback_qd, local_quydoi_path)
-            print(f"  ℹ Dùng file Quy đổi fallback: {fallback_qd}")
-        else:
-            raise FileNotFoundError("Không tìm thấy dữ liệu Quy đổi!")
+        quydoi_loaded = True
+
+    if not quydoi_loaded and not os.path.exists(local_quydoi_path):
+        raise FileNotFoundError("Không tìm thấy dữ liệu Quy đổi!")
 
     # 3. Làm sạch dữ liệu
     df_union, df_nhansu, df_quydoi = load_and_clean_all_data(
