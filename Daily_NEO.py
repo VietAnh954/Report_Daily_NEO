@@ -1151,17 +1151,17 @@ def main():
         else:
             raise FileNotFoundError(f"Không tìm thấy dữ liệu Cấp đơn!")
 
-    # 2.2 Tải Nhân sự
-    if drive_service:
+    # 2.2 Tải Nhân sự (Ưu tiên lấy trực tiếp từ OneDrive nếu chạy trên máy local, hoặc tải từ Drive nếu chạy GitHub Actions)
+    onedrive_ns = r"C:\Users\ADMIN\OneDrive\Nhân sự sales\DSNS CTV sale Affina FINAL V2.xlsx"
+    if os.path.exists(onedrive_ns):
+        import shutil
+        shutil.copyfile(onedrive_ns, local_nhansu_path)
+        print(f"  ℹ Đã nạp file Nhân sự mới nhất từ OneDrive: {onedrive_ns}")
+    elif drive_service:
         download_drive_file(drive_service, DSNS_FILE_ID, local_nhansu_path)
     elif not os.path.exists(local_nhansu_path):
-        fallback_ns = r"C:\Users\ADMIN\OneDrive\Nhân sự sales\DSNS CTV sale Affina FINAL V2.xlsx"
-        if os.path.exists(fallback_ns):
-            import shutil
-            shutil.copyfile(fallback_ns, local_nhansu_path)
-            print(f"  ℹ Dùng file Nhân sự fallback: {fallback_ns}")
-        else:
-            raise FileNotFoundError("Không tìm thấy dữ liệu Nhân sự!")
+        raise FileNotFoundError("Không tìm thấy dữ liệu Nhân sự!")
+
 
     # 2.3 Tải Quy đổi
     if drive_service:
