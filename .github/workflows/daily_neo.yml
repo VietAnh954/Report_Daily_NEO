@@ -2,11 +2,12 @@ name: Daily Report NEO
 
 on:
   schedule:
-    # Chạy 8:00 AM VN (1:00 UTC) và 17:30 PM VN (10:30 UTC) mỗi ngày
-    - cron: '0 1 * * *'
-    - cron: '30 10 * * *'
-  push:
-    branches: [ main ]
+    # Sáng: 7h22 VN (= 00h22 UTC)
+    - cron: '22 0 * * *'
+    # Chiều: 16h11 VN (= 09h11 UTC)
+    - cron: '11 9 * * *'
+    # Chiều: 17h28 VN (= 10h28 UTC)
+    - cron: '28 10 * * *'
   workflow_dispatch:
 
     inputs:
