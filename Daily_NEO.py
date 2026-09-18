@@ -70,6 +70,7 @@ SHEET_CAPDON_ID = '1qc_QhrvpoLLp6w9RkGBEkm8qBO49GJE8oMlwkCdJOsk'
 DSNS_FILE_ID    = '1_Mr_wnoJ2zBQJ0Pb9xFPwAH8IsIQiyuk'  # DSNS CTV sale Affina FINAL V2.xlsx
 QUYDOI_FILE_ID  = '1SDVXT33gHfIKR17x2xdWiO5xgabVXOWH'  # 26_02_04_sửa ngày_quy_doi_all.xlsx
 DRIVE_FOLDER_ID = os.environ.get('DRIVE_FOLDER_ID', '1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u')  # Target Drive Folder: Report_daily_NEO
+ONEDRIVE_DSNS_URL = os.environ.get('ONEDRIVE_DSNS_URL', 'https://1drv.ms/x/c/506a9d11fc30ada1/IQCsopTcUW2nSZJ_dhCCC9nwAb-1Wkmo0xYa5HzEyaIQIVU?e=TFjv1Y')  # Direct OneDrive Share Link
 
 
 # Đường dẫn file nội bộ (fallback khi chạy offline)
@@ -154,11 +155,39 @@ def init_google_services():
     return drive_service, sheets_service
 
 
-# ============================================================================
-# PHẦN 2: TẢI VÀ NẠP DỮ LIỆU TỪ GOOGLE DRIVE / SHEETS
-# ============================================================================
+def download_onedrive_file(onedrive_url, local_path):
+    """
+    Tải trực tiếp file từ link chia sẻ OneDrive (kể cả khi tắt máy tính).
+    Tự động chuyển link 1drv.ms sang direct stream download.
+    """
+    print(f"\n☁️ Đang tải file Nhân sự mới nhất trực tiếp từ OneDrive...")
+    try:
+        import requests
+        base_url = onedrive_url.split('?')[0]
+        direct_url = f"{base_url}?download=1"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+        }
+        resp = requests.get(direct_url, headers=headers, stream=True, timeout=60)
+        if resp.status_code == 200:
+            with open(local_path, 'wb') as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+            file_size = os.path.getsize(local_path)
+            print(f"  ✅ Đã tải thành công DSNS từ OneDrive: {file_size:,} bytes ({file_size / (1024 * 1024):.2f} MB)")
+            return True
+        else:
+            print(f"  ⚠️ Tải từ OneDrive trả về HTTP status: {resp.status_code}")
+            return False
+    except Exception as e:
+        print(f"  ⚠️ Lỗi khi tải trực tiếp từ OneDrive: {e}")
+        return False
+
+
 def download_drive_file(drive_service, file_id, local_path):
     """Tải file từ Google Drive về máy cục bộ / runner."""
+
     req = drive_service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, req)
@@ -1151,16 +1180,29 @@ def main():
         else:
             raise FileNotFoundError(f"Không tìm thấy dữ liệu Cấp đơn!")
 
-    # 2.2 Tải Nhân sự (Ưu tiên lấy trực tiếp từ OneDrive nếu chạy trên máy local, hoặc tải từ Drive nếu chạy GitHub Actions)
-    onedrive_ns = r"C:\Users\ADMIN\OneDrive\Nhân sự sales\DSNS CTV sale Affina FINAL V2.xlsx"
-    if os.path.exists(onedrive_ns):
-        import shutil
-        shutil.copyfile(onedrive_ns, local_nhansu_path)
-        print(f"  ℹ Đã nạp file Nhân sự mới nhất từ OneDrive: {onedrive_ns}")
-    elif drive_service:
+    # 2.2 Tải Nhân sự
+    # Ưu tiên 1: Tải trực tiếp từ link OneDrive online (kể cả khi tắt máy tính, luôn lấy bản mới nhất)
+    # Ưu tiên 2: Đọc từ shortcut OneDrive cục bộ trên máy nếu có
+    # Ưu tiên 3: Fallback tải từ Google Drive
+    dsns_loaded = False
+    if ONEDRIVE_DSNS_URL and ONEDRIVE_DSNS_URL.strip():
+        dsns_loaded = download_onedrive_file(ONEDRIVE_DSNS_URL.strip(), local_nhansu_path)
+
+    if not dsns_loaded:
+        onedrive_ns = r"C:\Users\ADMIN\OneDrive\Nhân sự sales\DSNS CTV sale Affina FINAL V2.xlsx"
+        if os.path.exists(onedrive_ns):
+            import shutil
+            shutil.copyfile(onedrive_ns, local_nhansu_path)
+            print(f"  ℹ Đã nạp file Nhân sự từ OneDrive cục bộ: {onedrive_ns}")
+            dsns_loaded = True
+
+    if not dsns_loaded and drive_service:
         download_drive_file(drive_service, DSNS_FILE_ID, local_nhansu_path)
-    elif not os.path.exists(local_nhansu_path):
+        dsns_loaded = True
+
+    if not dsns_loaded and not os.path.exists(local_nhansu_path):
         raise FileNotFoundError("Không tìm thấy dữ liệu Nhân sự!")
+
 
 
     # 2.3 Tải Quy đổi

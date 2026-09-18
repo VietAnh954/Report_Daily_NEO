@@ -2,11 +2,26 @@
 
 Hệ thống tự động hóa trích xuất báo cáo Daily Kênh Neo (Affina) từ dữ liệu Google Sheets & Google Drive, chạy tự động định kỳ qua **GitHub Actions** hoặc chạy thủ công tại máy cục bộ / Jupyter Notebook.
 
-Tự động lưu báo cáo vào thư mục Google Drive: **[Report_daily_NEO](https://drive.google.com/drive/folders/1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u?usp=sharing)** (ID: `1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u`).
+- **Thư mục lưu báo cáo Google Drive**: **[Report_daily_NEO](https://drive.google.com/drive/folders/1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u?usp=sharing)** (ID: `1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u`).
+- **Nguồn Danh sách Nhân sự (DSNS)**: Tự động tải trực tiếp từ **OneDrive** qua Direct Download link (hoạt động 100% kể cả khi tắt máy tính!).
 
 ---
 
-## 📑 1. Cấu Trúc Báo Cáo Excel (8 Sheet Tiêu Chuẩn)
+## ⏰ 1. Lịch Chạy Báo Cáo Tự Động (GitHub Actions)
+
+Workflow được cấu hình tại `.github/workflows/daily_neo.yml`:
+
+| Ca chạy | Giờ Việt Nam | Cấu hình Cron UTC | Ghi chú |
+| :--- | :--- | :--- | :--- |
+| **Sáng** | **07:22 AM** | `22 0 * * *` | Báo cáo đầu ngày |
+| **Chiều 1** | **16:11 PM** | `11 9 * * *` | Cập nhật giữa ca chiều |
+| **Chiều 2** | **17:28 PM** | `28 10 * * *` | Chốt doanh số cuối ngày |
+
+*Ngoài ra, bạn có thể bấm **Run workflow** trong tab Actions trên GitHub bất cứ lúc nào.*
+
+---
+
+## 📑 2. Cấu Trúc Báo Cáo Excel (8 Sheet Tiêu Chuẩn)
 
 Báo cáo Excel xuất ra bao gồm chính xác 8 sheet theo yêu cầu:
 
@@ -35,7 +50,7 @@ Báo cáo Excel xuất ra bao gồm chính xác 8 sheet theo yêu cầu:
 
 ---
 
-## 🎨 2. Tính Năng Định Dạng Excel Nổi Bật
+## 🎨 3. Tính Năng Định Dạng Excel Nổi Bật
 
 - **Màu sắc chuyên nghiệp**: Mỗi bảng được phân bổ mã màu nhận diện thương hiệu rõ ràng (Xanh lam, Xanh ngọc, Tím thạch anh, Cam nhạt,...).
 - **Bộ lọc động (AutoFilter)**: Tự động kích hoạt bộ lọc cho tất cả các cột trên toàn bộ 8 sheet.
@@ -49,56 +64,11 @@ Báo cáo Excel xuất ra bao gồm chính xác 8 sheet theo yêu cầu:
 
 ---
 
-## ☁️ 3. Thư Mục Google Drive Đích & Quyền Upload
+## ☁️ 4. Nguồn Dữ Liệu Input (Tự Động 100%)
 
-- **Thư mục lưu trữ**: `Report_daily_NEO`
-- **Link thư mục**: [Google Drive Folder](https://drive.google.com/drive/folders/1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u?usp=sharing)
-- **Folder ID**: `1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u`
-
-> ⚠️ **LƯU Ý QUAN TRỌNG VỀ QUYỀN TẢI LÊN GOOGLE DRIVE:**
-> - Nếu thư mục nằm trong **Google Drive cá nhân (@gmail.com)**: Chính sách của Google không cho phép Service Account (`daily-report-bot@...`) tạo file mới trong Drive cá nhân vì Service Account có 0 storage quota (`storageQuotaExceeded`).
-> - Để GitHub Actions tự động upload file thành công vào folder cá nhân, bạn chỉ cần dùng **OAuth Refresh Token** (giống hệt dự án `AnLoan` bạn đã làm).
-> - Script `get_refresh_token.py` đã được tích hợp sẵn: Chạy `python get_refresh_token.py` trên máy, đăng nhập Gmail 1 lần và dán 3 secret vào GitHub.
-
----
-
-## ⚙️ 4. Tự Động Hóa Qua GitHub Actions
-
-Hệ thống được cấu hình workflow tại `.github/workflows/daily_neo.yml`:
-
-### Lịch chạy tự động (Schedule):
-- **08:00 AM (Giờ VN)**: Cập nhật doanh số đầu ngày.
-- **17:30 PM (Giờ VN)**: Tổng hợp báo cáo chốt ca chiều.
-
-### Kích hoạt thủ công (Manual Trigger):
-- Vào tab **Actions** trên GitHub Repo -> Chọn workflow **Daily Report NEO** -> Bấm **Run workflow**.
-- Có thể nhập tham số tùy chọn:
-  - `report_month`: Tháng muốn xuất báo cáo (ví dụ: `2` hoặc để trống lấy tháng hiện tại).
-  - `report_year`: Năm muốn xuất báo cáo (ví dụ: `2026` hoặc để trống lấy năm hiện tại).
-
-### Cấu hình GitHub Secrets:
-Vào GitHub Repository (**Settings > Secrets and variables > Actions > New repository secret**) và thêm các Secrets:
-
-| Tên Secret | Ý Nghĩa / Cách Lấy |
-| :--- | :--- |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Nội dung JSON file Service Account (Dùng để đọc dữ liệu Cấp đơn, Nhân sự, Quy đổi). |
-| `GOOGLE_CLIENT_ID` | Client ID OAuth (đã có sẵn trong file `oauth_credentials.json`). |
-| `GOOGLE_CLIENT_SECRET` | Client Secret OAuth (đã có sẵn trong file `oauth_credentials.json`). |
-| `GOOGLE_REFRESH_TOKEN` | Refresh Token của tài khoản Gmail sở hữu folder Drive (chạy `python get_refresh_token.py` để lấy). |
-
----
-
-## 💻 5. Hướng Dẫn Chạy Báo Cáo Tại Máy Cục Bộ (Local)
-
-### Cài đặt môi trường:
-```bash
-pip install -r requirements.txt
-```
-
-### Chạy bằng file Python script:
-```bash
-python Daily_NEO.py
-```
-
-### Chạy bằng Jupyter Notebook:
-Mở file `Daily_NEO.ipynb` bằng VS Code, JupyterLab hoặc Google Colab, sau đó bấm **Run All**.
+1. **Cấp đơn**: Tải trực tiếp qua Google Sheets API từ Google Sheet private online:  
+   `https://docs.google.com/spreadsheets/d/1qc_QhrvpoLLp6w9RkGBEkm8qBO49GJE8oMlwkCdJOsk/edit?usp=sharing`
+2. **Danh sách Nhân sự (DSNS)**: Tự động tải từ link OneDrive:  
+   `https://1drv.ms/x/c/506a9d11fc30ada1/IQCsopTcUW2nSZJ_dhCCC9nwAb-1Wkmo0xYa5HzEyaIQIVU?e=TFjv1Y`  
+   *(Khi người quản lý nhân sự chỉnh sửa file trên OneDrive, GitHub Actions luôn tải bản mới nhất trực tiếp từ Microsoft Cloud kể cả khi bạn tắt máy tính).*
+3. **Quy đổi**: Tải từ Google Drive ID `1SDVXT33gHfIKR17x2xdWiO5xgabVXOWH`.
