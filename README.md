@@ -2,6 +2,8 @@
 
 Hệ thống tự động hóa trích xuất báo cáo Daily Kênh Neo (Affina) từ dữ liệu Google Sheets & Google Drive, chạy tự động định kỳ qua **GitHub Actions** hoặc chạy thủ công tại máy cục bộ / Jupyter Notebook.
 
+Tự động lưu báo cáo vào thư mục Google Drive: **[Report_daily_NEO](https://drive.google.com/drive/folders/1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u?usp=sharing)** (ID: `1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u`).
+
 ---
 
 ## 📑 1. Cấu Trúc Báo Cáo Excel (8 Sheet Tiêu Chuẩn)
@@ -10,7 +12,7 @@ Báo cáo Excel xuất ra bao gồm chính xác 8 sheet theo yêu cầu:
 
 1. **`detail`**: 
    - Danh sách chi tiết toàn bộ các hợp đồng / case phát sinh của Kênh Neo trong tháng báo cáo.
-   - Bao gồm đầy đủ thông tin: Ngày cấp, Khách hàng, Sản phẩm, Doanh số, Phí quy đổi, Kênh (AG/SM/SD/CD), Tên & Mã tư vấn viên.
+   - Bao gồm quy tắc tự động chuẩn hóa: Nếu nhân sự là `PHẠM TRƯỜNG KHÁNH` (`LD4641`) có kênh là `HO` thì tự động chuyển thành `CD` (Kênh Neo).
 2. **`tracking AG`**: 
    - Theo dõi tiến độ doanh số và hoạt động của từng Đại lý (AG) Kênh Neo.
    - Thống kê số lượng hợp đồng, tổng doanh số thực thu và phí quy đổi tương ứng theo từng AG.
@@ -47,7 +49,20 @@ Báo cáo Excel xuất ra bao gồm chính xác 8 sheet theo yêu cầu:
 
 ---
 
-## ⚙️ 3. Tự Động Hóa Qua GitHub Actions
+## ☁️ 3. Thư Mục Google Drive Đích & Quyền Upload
+
+- **Thư mục lưu trữ**: `Report_daily_NEO`
+- **Link thư mục**: [Google Drive Folder](https://drive.google.com/drive/folders/1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u?usp=sharing)
+- **Folder ID**: `1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u`
+
+> ⚠️ **LƯU Ý QUAN TRỌNG VỀ QUYỀN TẢI LÊN GOOGLE DRIVE:**
+> - Nếu thư mục nằm trong **Google Drive cá nhân (@gmail.com)**: Chính sách của Google không cho phép Service Account (`daily-report-bot@...`) tạo file mới trong Drive cá nhân vì Service Account có 0 storage quota (`storageQuotaExceeded`).
+> - Để GitHub Actions tự động upload file thành công vào folder cá nhân, bạn chỉ cần dùng **OAuth Refresh Token** (giống hệt dự án `AnLoan` bạn đã làm).
+> - Script `get_refresh_token.py` đã được tích hợp sẵn: Chạy `python get_refresh_token.py` trên máy, đăng nhập Gmail 1 lần và dán 3 secret vào GitHub.
+
+---
+
+## ⚙️ 4. Tự Động Hóa Qua GitHub Actions
 
 Hệ thống được cấu hình workflow tại `.github/workflows/daily_neo.yml`:
 
@@ -62,20 +77,18 @@ Hệ thống được cấu hình workflow tại `.github/workflows/daily_neo.ym
   - `report_year`: Năm muốn xuất báo cáo (ví dụ: `2026` hoặc để trống lấy năm hiện tại).
 
 ### Cấu hình GitHub Secrets:
-Để workflow chạy thành công, cần thêm các Secret sau vào GitHub Repository (**Settings > Secrets and variables > Actions**):
+Vào GitHub Repository (**Settings > Secrets and variables > Actions > New repository secret**) và thêm các Secrets:
 
 | Tên Secret | Ý Nghĩa / Cách Lấy |
 | :--- | :--- |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Toàn bộ nội dung chuỗi JSON của file Google Service Account (Bắt đầu bằng `{"type": "service_account", ...}`). |
-| *(Tùy chọn OAuth)* `GOOGLE_CLIENT_ID` | Client ID nếu dùng OAuth2. |
-| *(Tùy chọn OAuth)* `GOOGLE_CLIENT_SECRET` | Client Secret nếu dùng OAuth2. |
-| *(Tùy chọn OAuth)* `GOOGLE_REFRESH_TOKEN` | Refresh Token nếu dùng OAuth2. |
-
-> **Lưu ý Drive Folder**: Báo cáo sau khi xuất xong sẽ được tải trực tiếp lên Google Drive tại thư mục **`Report_NEO`** và đồng thời lưu làm file Artifacts (tải về được trên GitHub Actions).
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Nội dung JSON file Service Account (Dùng để đọc dữ liệu Cấp đơn, Nhân sự, Quy đổi). |
+| `GOOGLE_CLIENT_ID` | Client ID OAuth (đã có sẵn trong file `oauth_credentials.json`). |
+| `GOOGLE_CLIENT_SECRET` | Client Secret OAuth (đã có sẵn trong file `oauth_credentials.json`). |
+| `GOOGLE_REFRESH_TOKEN` | Refresh Token của tài khoản Gmail sở hữu folder Drive (chạy `python get_refresh_token.py` để lấy). |
 
 ---
 
-## 💻 4. Hướng Dẫn Chạy Báo Cáo Tại Máy Cục Bộ (Local)
+## 💻 5. Hướng Dẫn Chạy Báo Cáo Tại Máy Cục Bộ (Local)
 
 ### Cài đặt môi trường:
 ```bash

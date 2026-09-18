@@ -66,7 +66,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 SHEET_CAPDON_ID = '1qc_QhrvpoLLp6w9RkGBEkm8qBO49GJE8oMlwkCdJOsk'
 DSNS_FILE_ID    = '1_Mr_wnoJ2zBQJ0Pb9xFPwAH8IsIQiyuk'  # DSNS CTV sale Affina FINAL V2.xlsx
 QUYDOI_FILE_ID  = '1SDVXT33gHfIKR17x2xdWiO5xgabVXOWH'  # 26_02_04_sửa ngày_quy_doi_all.xlsx
-DRIVE_FOLDER_NAME = 'Report_NEO'
+DRIVE_FOLDER_ID = os.environ.get('DRIVE_FOLDER_ID', '1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u')  # Target Drive Folder: Report_daily_NEO
+
 
 # Đường dẫn file nội bộ (fallback khi chạy offline)
 LOCAL_SA_KEY_PATHS = [
@@ -95,18 +96,39 @@ def init_google_services():
         'https://www.googleapis.com/auth/spreadsheets.readonly'
     ]
 
-    # Cách 1: Chuỗi JSON Service Account từ Secret GitHub Actions
-    sa_json_str = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
-    if sa_json_str and sa_json_str.strip():
+    # Cách 1: OAuth Credentials (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REFRESH_TOKEN)
+    # Ưu tiên OAuth vì tài khoản cá nhân có dung lượng Drive để tạo & upload file mới
+    client_id = os.environ.get('GOOGLE_CLIENT_ID')
+    client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+    refresh_token = os.environ.get('GOOGLE_REFRESH_TOKEN')
+    if client_id and client_secret and refresh_token:
         try:
-            import json
-            info = json.loads(sa_json_str)
-            creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
-            print("  🔑 Xác thực thành công qua GOOGLE_SERVICE_ACCOUNT_JSON (GitHub Secrets)!")
+            creds = Credentials(
+                token=None,
+                refresh_token=refresh_token,
+                client_id=client_id,
+                client_secret=client_secret,
+                token_uri='https://oauth2.googleapis.com/token',
+                scopes=scopes
+            )
+            creds.refresh(Request())
+            print("  🔑 Xác thực thành công qua OAuth Refresh Token (tài khoản cá nhân có quota upload)!")
         except Exception as e:
-            print(f"  ⚠️ Lỗi parse GOOGLE_SERVICE_ACCOUNT_JSON: {e}")
+            print(f"  ⚠️ Lỗi xác thực OAuth: {e}")
 
-    # Cách 2: File Service Account cục bộ
+    # Cách 2: Chuỗi JSON Service Account từ Secret GitHub Actions
+    if not creds:
+        sa_json_str = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+        if sa_json_str and sa_json_str.strip():
+            try:
+                import json
+                info = json.loads(sa_json_str)
+                creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
+                print("  🔑 Xác thực thành công qua GOOGLE_SERVICE_ACCOUNT_JSON (GitHub Secrets)!")
+            except Exception as e:
+                print(f"  ⚠️ Lỗi parse GOOGLE_SERVICE_ACCOUNT_JSON: {e}")
+
+    # Cách 3: File Service Account cục bộ
     if not creds:
         sa_path = os.environ.get('GOOGLE_SA_KEY_PATH')
         candidates = [sa_path] if sa_path else LOCAL_SA_KEY_PATHS
@@ -119,25 +141,6 @@ def init_google_services():
                 except Exception as e:
                     print(f"  ⚠️ Không thể nạp key từ {p}: {e}")
 
-    # Cách 3: OAuth Credentials (Client ID + Secret + Refresh Token)
-    if not creds:
-        client_id = os.environ.get('GOOGLE_CLIENT_ID')
-        client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
-        refresh_token = os.environ.get('GOOGLE_REFRESH_TOKEN')
-        if client_id and client_secret and refresh_token:
-            try:
-                creds = Credentials(
-                    token=None,
-                    refresh_token=refresh_token,
-                    client_id=client_id,
-                    client_secret=client_secret,
-                    token_uri='https://oauth2.googleapis.com/token',
-                    scopes=scopes
-                )
-                creds.refresh(Request())
-                print("  🔑 Xác thực thành công qua OAuth Refresh Token!")
-            except Exception as e:
-                print(f"  ⚠️ Lỗi xác thực OAuth: {e}")
 
     if creds:
         drive_service = build('drive', 'v3', credentials=creds)
@@ -211,8 +214,11 @@ def export_google_sheet_data(sheets_service, spreadsheet_id, target_sheets, loca
     print(f"  ✅ Đã xuất {sheets_written} sheet Cấp đơn thành công.")
 
 
-def upload_to_drive(drive_service, local_path, folder_name=DRIVE_FOLDER_NAME, target_filename=None):
-    """Upload file kết quả lên Google Drive (tự tìm hoặc tạo thư mục)."""
+def upload_to_drive(drive_service, local_path, folder_id=DRIVE_FOLDER_ID, target_filename=None):
+    """
+    Upload file kết quả lên Google Drive.
+    Mặc định lưu vào thư mục Report_daily_NEO (ID: 1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u).
+    """
     if not drive_service:
         print("  ⚠️ Bỏ qua upload Google Drive (chưa cấu hình credentials).")
         return
@@ -220,23 +226,16 @@ def upload_to_drive(drive_service, local_path, folder_name=DRIVE_FOLDER_NAME, ta
     if not target_filename:
         target_filename = os.path.basename(local_path)
         
-    print(f"\n☁️ Đang upload báo cáo lên Google Drive: {target_filename}...")
+    print(f"\n☁️ Đang upload báo cáo lên Google Drive (Folder ID: {folder_id}): {target_filename}...")
     try:
-        # 1. Tìm hoặc tạo folder
-        q_folder = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        res_f = drive_service.files().list(q=q_folder, fields="files(id, name)").execute()
-        f_list = res_f.get('files', [])
-        if f_list:
-            folder_id = f_list[0]['id']
-        else:
-            meta = {'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder'}
-            created_f = drive_service.files().create(body=meta, fields='id').execute()
-            folder_id = created_f['id']
-            print(f"  📁 Đã tạo thư mục mới trên Drive: {folder_name} (ID: {folder_id})")
-
-        # 2. Kiểm tra file cũ để ghi đè (update) hoặc tạo mới
+        # 1. Kiểm tra file cũ trong thư mục để ghi đè (update) hoặc tạo mới
         q_file = f"name = '{target_filename}' and '{folder_id}' in parents and trashed = false"
-        res_file = drive_service.files().list(q=q_file, fields="files(id, name)").execute()
+        res_file = drive_service.files().list(
+            q=q_file,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
         existing = res_file.get('files', [])
         
         media = MediaFileUpload(
@@ -246,14 +245,36 @@ def upload_to_drive(drive_service, local_path, folder_name=DRIVE_FOLDER_NAME, ta
         )
         if existing:
             file_id = existing[0]['id']
-            drive_service.files().update(fileId=file_id, media_body=media).execute()
+            drive_service.files().update(
+                fileId=file_id,
+                media_body=media,
+                supportsAllDrives=True
+            ).execute()
             print(f"  ✅ Đã cập nhật (ghi đè) file trên Drive: {target_filename} (ID: {file_id})")
         else:
             meta = {'name': target_filename, 'parents': [folder_id]}
-            new_file = drive_service.files().create(body=meta, media_body=media, fields='id').execute()
+            new_file = drive_service.files().create(
+                body=meta,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
             print(f"  ✅ Đã tải file mới lên Drive: {target_filename} (ID: {new_file['id']})")
     except Exception as e:
+        err_msg = str(e)
         print(f"  ❌ Lỗi khi upload Google Drive: {e}")
+        if 'storageQuotaExceeded' in err_msg or 'quota' in err_msg.lower():
+            print("\n" + "=" * 75)
+            print("⚠️ LƯU Ý VỀ DUNG LƯỢNG GOOGLE DRIVE (PERSONAL DRIVE QUOTA):")
+            print("Google Service Account không có dung lượng lưu trữ trên Google Drive cá nhân (@gmail.com).")
+            print("👉 Để tự động upload thành công vào folder cá nhân trên GitHub Actions:")
+            print("   Vui lòng thêm 3 Secret OAuth giống dự án AnLoan vào GitHub:")
+            print("   1. GOOGLE_CLIENT_ID")
+            print("   2. GOOGLE_CLIENT_SECRET")
+            print("   3. GOOGLE_REFRESH_TOKEN (lấy từ script get_refresh_token.py)")
+            print("   (Hoặc nếu dùng Google Workspace, chuyển folder vào Shared Drive - Bộ nhớ dùng chung).")
+            print("=" * 75 + "\n")
+
 
 
 # ============================================================================
@@ -1170,7 +1191,8 @@ def main():
 
     # 6. Upload file kết quả lên Google Drive
     if drive_service:
-        upload_to_drive(drive_service, out_excel_path, DRIVE_FOLDER_NAME, out_filename)
+        upload_to_drive(drive_service, out_excel_path, DRIVE_FOLDER_ID, out_filename)
+
 
     print("\n" + "=" * 80)
     print(f"🎉 BÁO CÁO DAILY NEO ĐÃ HOÀN TẤT XUẤT THÀNH CÔNG!")
