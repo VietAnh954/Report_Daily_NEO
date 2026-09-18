@@ -1,0 +1,8 @@
+﻿__pycache__/
+*.pyc
+temp_affina_neo/
+output/
+google_service_account.json
+oauth_credentials.json
+.env
+.ipynb_checkpoints/

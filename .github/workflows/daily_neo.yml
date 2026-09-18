@@ -1,0 +1,55 @@
+﻿name: Daily Report NEO
+
+on:
+  schedule:
+    # Chạy 8:00 AM VN (1:00 UTC) và 17:30 PM VN (10:30 UTC) mỗi ngày
+    - cron: '0 1 * * *'
+    - cron: '30 10 * * *'
+  workflow_dispatch:
+    inputs:
+      report_month:
+        description: 'Tháng báo cáo (1-12, để trống = tháng hiện tại)'
+        required: false
+        default: ''
+      report_year:
+        description: 'Năm báo cáo (ví dụ: 2026, để trống = năm hiện tại)'
+        required: false
+        default: ''
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Daily NEO Report
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          REPORT_MONTH: ${{ github.event.inputs.report_month }}
+          REPORT_YEAR: ${{ github.event.inputs.report_year }}
+          TZ: Asia/Ho_Chi_Minh
+        run: python Daily_NEO.py
+
+      - name: Upload Excel Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daily_NEO_Reports
+          path: output/*.xlsx
+          retention-days: 14
