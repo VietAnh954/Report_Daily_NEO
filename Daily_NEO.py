@@ -261,10 +261,80 @@ def export_google_sheet_data(sheets_service, spreadsheet_id, target_sheets, loca
     print(f"  ✅ Đã xuất {sheets_written} sheet Cấp đơn thành công.")
 
 
-def upload_to_drive(drive_service, local_path, folder_id=DRIVE_FOLDER_ID, target_filename=None):
+def get_or_create_drive_month_folder(drive_service, parent_id, month):
+    """
+    Tìm hoặc tạo thư mục 'Tháng X' trên Google Drive bên trong parent_id.
+    """
+    m_int = int(month)
+    target_name = f"Tháng {m_int}"
+    q = (
+        f"'{parent_id}' in parents and "
+        f"mimeType = 'application/vnd.google-apps.folder' and "
+        f"trashed = false and "
+        f"(name = 'Tháng {m_int}' or name = 'Tháng {m_int:02d}')"
+    )
+    res = drive_service.files().list(
+        q=q,
+        fields='files(id, name)',
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+    folders = res.get('files', [])
+    if folders:
+        print(f"  📁 Đã tìm thấy thư mục trên Drive: '{folders[0]['name']}' (ID: {folders[0]['id']})")
+        return folders[0]['id']
+    else:
+        meta = {
+            'name': target_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [parent_id]
+        }
+        created = drive_service.files().create(
+            body=meta,
+            fields='id, name',
+            supportsAllDrives=True
+        ).execute()
+        print(f"  ✨ Đã tạo mới thư mục trên Drive: '{created['name']}' (ID: {created['id']})")
+        return created['id']
+
+
+def move_loose_drive_files_to_month_folder(drive_service, parent_id, month, month_folder_id):
+    """
+    Tìm các file Excel của tháng tương ứng còn nằm ngoài thư mục cha (parent_id) và chuyển vào month_folder_id.
+    """
+    m_int = int(month)
+    q = (
+        f"'{parent_id}' in parents and "
+        f"mimeType != 'application/vnd.google-apps.folder' and "
+        f"trashed = false"
+    )
+    res = drive_service.files().list(
+        q=q,
+        fields='files(id, name, parents)',
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+    loose_files = res.get('files', [])
+    for f in loose_files:
+        fname = f['name']
+        if f"_Thang_{m_int}_" in fname or f"_Thang_{m_int:02d}_" in fname or re.search(rf"_Thang_0?{m_int}_", fname, re.IGNORECASE):
+            try:
+                drive_service.files().update(
+                    fileId=f['id'],
+                    addParents=month_folder_id,
+                    removeParents=parent_id,
+                    fields='id, parents',
+                    supportsAllDrives=True
+                ).execute()
+                print(f"  📦 Đã gom file cũ '{fname}' vào thư mục Tháng {m_int} trên Drive")
+            except Exception as e:
+                print(f"  ⚠️ Không thể gom file '{fname}' vào thư mục Tháng {m_int}: {e}")
+
+
+def upload_to_drive(drive_service, local_path, folder_id=DRIVE_FOLDER_ID, target_filename=None, report_month=None):
     """
     Upload file kết quả lên Google Drive.
-    Mặc định lưu vào thư mục Report_daily_NEO (ID: 1uGHy8E3FLPgc-TPDum9u_ELNPU4nUf-u).
+    Tự động kiểm tra/tạo thư mục 'Tháng X' trong Report_daily_NEO và gom toàn bộ file của tháng đó vào.
     """
     if not drive_service:
         print("  ⚠️ Bỏ qua upload Google Drive (chưa cấu hình credentials).")
@@ -273,10 +343,19 @@ def upload_to_drive(drive_service, local_path, folder_id=DRIVE_FOLDER_ID, target
     if not target_filename:
         target_filename = os.path.basename(local_path)
         
-    print(f"\n☁️ Đang upload báo cáo lên Google Drive (Folder ID: {folder_id}): {target_filename}...")
+    dest_folder_id = folder_id
+    if report_month is not None:
+        try:
+            dest_folder_id = get_or_create_drive_month_folder(drive_service, folder_id, report_month)
+            move_loose_drive_files_to_month_folder(drive_service, folder_id, report_month, dest_folder_id)
+        except Exception as e:
+            print(f"  ⚠️ Lỗi khi tổ chức thư mục tháng trên Drive ({e}), upload về thư mục gốc.")
+            dest_folder_id = folder_id
+
+    print(f"\n☁️ Đang upload báo cáo lên Google Drive (Folder ID: {dest_folder_id}): {target_filename}...")
     try:
         # 1. Kiểm tra file cũ trong thư mục để ghi đè (update) hoặc tạo mới
-        q_file = f"name = '{target_filename}' and '{folder_id}' in parents and trashed = false"
+        q_file = f"name = '{target_filename}' and '{dest_folder_id}' in parents and trashed = false"
         res_file = drive_service.files().list(
             q=q_file,
             fields="files(id, name)",
@@ -299,7 +378,7 @@ def upload_to_drive(drive_service, local_path, folder_id=DRIVE_FOLDER_ID, target
             ).execute()
             print(f"  ✅ Đã cập nhật (ghi đè) file trên Drive: {target_filename} (ID: {file_id})")
         else:
-            meta = {'name': target_filename, 'parents': [folder_id]}
+            meta = {'name': target_filename, 'parents': [dest_folder_id]}
             new_file = drive_service.files().create(
                 body=meta,
                 media_body=media,
@@ -1259,13 +1338,33 @@ def main():
     # 5. Xuất báo cáo Excel với đầy đủ 8 sheet và định dạng chuyên nghiệp
     today_tag = datetime.now().strftime("%d%m")
     out_filename = f"{today_tag}_Daily_Report_NEO_Thang_{REPORT_MONTH}_{REPORT_YEAR}.xlsx"
-    out_excel_path = os.path.join(OUTPUT_DIR, out_filename)
+
+    # Tổ chức thư mục lưu trữ cục bộ: output/Tháng X/
+    month_folder_name = f"Tháng {int(REPORT_MONTH)}"
+    local_month_dir = os.path.join(OUTPUT_DIR, month_folder_name)
+    os.makedirs(local_month_dir, exist_ok=True)
+
+    # Gom các file của tháng này trước đây còn nằm ngoài thư mục tháng
+    for item in os.listdir(OUTPUT_DIR):
+        item_path = os.path.join(OUTPUT_DIR, item)
+        if os.path.isfile(item_path) and item.endswith('.xlsx'):
+            if f"_Thang_{int(REPORT_MONTH)}_" in item or f"_Thang_{int(REPORT_MONTH):02d}_" in item or re.search(rf"_Thang_0?{int(REPORT_MONTH)}_", item, re.IGNORECASE):
+                try:
+                    dest_file = os.path.join(local_month_dir, item)
+                    if os.path.exists(dest_file):
+                        os.remove(dest_file)
+                    shutil.move(item_path, dest_file)
+                    print(f"  📦 Đã gom file local cũ '{item}' vào thư mục '{month_folder_name}'")
+                except Exception as e:
+                    pass
+
+    out_excel_path = os.path.join(local_month_dir, out_filename)
 
     build_and_format_excel_report(sheets_dict, out_excel_path)
 
-    # 6. Upload file kết quả lên Google Drive
+    # 6. Upload file kết quả lên Google Drive (vào folder Tháng X và gom file cũ trên Drive)
     if drive_service:
-        upload_to_drive(drive_service, out_excel_path, DRIVE_FOLDER_ID, out_filename)
+        upload_to_drive(drive_service, out_excel_path, DRIVE_FOLDER_ID, out_filename, report_month=REPORT_MONTH)
 
 
     print("\n" + "=" * 80)

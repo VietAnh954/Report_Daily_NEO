@@ -55,5 +55,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Daily_NEO_Reports
-          path: output/*.xlsx
+          path: output/**/*.xlsx
           retention-days: 14
