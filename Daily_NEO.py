@@ -163,13 +163,20 @@ def download_onedrive_file(onedrive_url, local_path):
     print(f"\n☁️ Đang tải file Nhân sự mới nhất trực tiếp từ OneDrive...")
     try:
         import requests
-        base_url = onedrive_url.split('?')[0]
-        direct_url = f"{base_url}?download=1"
+        # Giữ nguyên token ?e=... và chỉ append &download=1
+        if '?' in onedrive_url:
+            direct_url = onedrive_url + '&download=1'
+        else:
+            direct_url = onedrive_url + '?download=1'
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
         }
-        resp = requests.get(direct_url, headers=headers, stream=True, timeout=60)
+        resp = requests.get(direct_url, headers=headers, stream=True, timeout=60, allow_redirects=True)
         if resp.status_code == 200:
+            content_type = resp.headers.get('Content-Type', '')
+            if 'html' in content_type.lower():
+                print(f"  ⚠️ OneDrive trả về HTML thay vì file Excel (link có thể hết hạn, Content-Type: {content_type})")
+                return False
             with open(local_path, 'wb') as f:
                 for chunk in resp.iter_content(chunk_size=1024 * 1024):
                     if chunk:
